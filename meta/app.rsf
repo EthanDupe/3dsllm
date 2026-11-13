@@ -16,11 +16,18 @@ Option:
   EnableCrypt             : false
   MediaFootPadding        : false
 
+SystemControlInfo:
+  SaveDataSize            : 0KB
+  RemasterVersion         : 0
+  StackSize               : 0x40000
+  JumpId                  : 0x000400000F41A200L
+
 AccessControlInfo:
   CoreVersion             : 2
   DescVersion             : 2
   ReleaseKernelMajor      : "02"
   ReleaseKernelMinor      : "33"
+  UseExtSaveData          : false
   ExtSaveDataId           : 0xF41A2
   FileSystemAccess:
    - DirectSdmc
@@ -39,6 +46,7 @@ AccessControlInfo:
   AffinityMask            : 1
   Priority                : 16
   MaxCpu                  : 0x9E
+  HandleTableSize         : 512
   DisableDebug            : false
   EnableForceDebug        : false
   CanWriteSharedPage      : true
@@ -95,17 +103,9 @@ AccessControlInfo:
     SendSyncRequest3: 48
     SendSyncRequest4: 49
     SendSyncRequest: 50
-    SetThreadPriority: 12
-    SetTimer: 27
-    SignalEvent: 24
-    SleepThread: 10
-    UnmapMemoryBlock: 32
-    WaitSynchronization1: 36
-    WaitSynchronizationN: 37
-  ServiceAccessControl:
-   - APT:U
-   - cfg:u
-   - fs:USER
-   - gsp::Gpu
-   - hid:USER
-   - ptm:u
+
+`banner.bnr` and `icon.icn` both built cleanly in that run, and the only error left is that `meta/app.rsf` was missing `HandleTableSize: 512` and `SystemControlInfo` for `makerom`.
+
+[file-tag: app.rsf]
+
+Replace `meta/app.rsf` in your repository with this updated file (or just add `HandleTableSize: 512` under `AccessControlInfo:` in `meta/app.rsf`) and commit to finish building `Llama3DS.cia` and `Llama3DS_QR.png`.
