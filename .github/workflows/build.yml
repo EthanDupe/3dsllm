@@ -18,9 +18,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure 3DS libraries and build tools are installed
+      - name: Install build tools and QR generator
         run: |
-          dkp-pacman -Sy --noconfirm 3ds-dev || true
           apt-get update && apt-get install -y cmake g++ git python3-qrcode python3-pil
 
       - name: Install makerom and build bannertool in local tools/bin
@@ -43,7 +42,8 @@ jobs:
       - name: Package CIA
         run: |
           export PATH="$PWD/tools/bin:$PATH"
-          bannertool makebanner -i resources/banner.png -o build/banner.bnr
+          python3 -c "import wave; w=wave.open('build/silence.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b'\x00\x00'*4410); w.close()"
+          bannertool makebanner -i resources/banner.png -a build/silence.wav -o build/banner.bnr
           bannertool makesmdh -s "Llama3DS" -l "Local AI Chat (llama2.c)" -p "Eko" -i resources/icon.png -o build/icon.icn
           makerom -f cia -o Llama3DS.cia -elf Llama3DS.elf -rsf meta/app.rsf -banner build/banner.bnr -icon build/icon.icn
 
