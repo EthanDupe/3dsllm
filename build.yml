@@ -18,9 +18,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure 3DS libraries and build tools are installed
+      - name: Install build tools and QR generator
         run: |
-          dkp-pacman -Sy --noconfirm 3ds-dev || true
           apt-get update && apt-get install -y cmake g++ git python3-qrcode python3-pil
 
       - name: Install makerom and build bannertool in local tools/bin
