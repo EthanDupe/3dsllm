@@ -1,0 +1,51 @@
+name: Build 2DS XL CIA & 3DSX
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure 3DS libraries are installed
+        run: |
+          dkp-pacman -Sy --noconfirm 3ds-dev || true
+
+      - name: Install makerom and bannertool to local tools/bin
+        run: |
+          mkdir -p tools/bin
+          curl -sL -o makerom.zip "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip"
+          unzip -o makerom.zip -d tools/bin
+          curl -sL -o bannertool.zip "https://github.com/Steveice10/bannertool/releases/download/1.2.0/bannertool.zip"
+          unzip -o bannertool.zip -d bannertool_tmp
+          cp bannertool_tmp/linux-x86_64/bannertool tools/bin/bannertool
+          chmod +x tools/bin/makerom tools/bin/bannertool
+          rm -rf makerom.zip bannertool.zip bannertool_tmp
+
+      - name: Build 3DSX and ELF
+        run: |
+          export PATH="$PWD/tools/bin:$PATH"
+          make -j$(nproc)
+
+      - name: Package CIA
+        run: |
+          export PATH="$PWD/tools/bin:$PATH"
+          bannertool makebanner -i resources/banner.png -o build/banner.bnr
+          bannertool makesmdh -s "Llama3DS" -l "Local AI Chat (llama2.c)" -p "Eko" -i resources/icon.png -o build/icon.icn
+          makerom -f cia -o Llama3DS.cia -elf Llama3DS.elf -rsf meta/app.rsf -banner build/banner.bnr -icon build/icon.icn
+
+      - name: Upload 3DSX and CIA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Llama3DS-Build
+          path: |
+            Llama3DS.3dsx
+            Llama3DS.cia
