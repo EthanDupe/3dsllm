@@ -1,76 +1,75 @@
-ifeq ($(strip $(DEVKITARM)),)
-$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>/devkitARM")
-endif
+name: Build 2DS XL CIA, 3DSX & QR Code
 
-TOPDIR ?= $(CURDIR)
-include $(DEVKITARM)/3ds_rules
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-TARGET          := Llama3DS
-BUILD           := build
-SOURCES         := source
-INCLUDES        := include
-APP_TITLE       := Llama3DS
-APP_DESCRIPTION := Local AI Chat (llama2.c)
-APP_AUTHOR      := Eko
-APP_ICON        := $(TOPDIR)/resources/icon.png
+permissions:
+  contents: write
 
-ARCH            := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-CFLAGS          := -g -Wall -O3 -mword-relocations -ffunction-sections $(ARCH) -D__3DS__
-CXXFLAGS        := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
-ASFLAGS         := -g $(ARCH)
-LDFLAGS         := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
 
-LIBS            := -lcitro2d -lcitro3d -lctru -lm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-LIBDIRS         := $(CTRULIB) $(PORTLIBS)
+      - name: Ensure 3DS libraries and build tools are installed
+        run: |
+          dkp-pacman -Sy --noconfirm 3ds-dev || true
+          apt-get update && apt-get install -y cmake g++ git python3-qrcode python3-pil
 
-ifneq ($(BUILD),$(notdir $(CURDIR)))
+      - name: Install makerom and build bannertool in local tools/bin
+        run: |
+          mkdir -p tools/bin
+          curl -sL -o makerom.zip "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip"
+          unzip -o makerom.zip -d tools/bin
+          git clone --depth=1 https://github.com/carstene1ns/3ds-bannertool.git bannertool_src
+          cmake -S bannertool_src -B bannertool_src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build bannertool_src/build -j$(nproc)
+          cp bannertool_src/build/bannertool tools/bin/bannertool
+          chmod +x tools/bin/makerom tools/bin/bannertool
+          rm -rf makerom.zip bannertool_src
 
-export OUTPUT   := $(CURDIR)/$(TARGET)
-export TOPDIR   := $(CURDIR)
-export VPATH    := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
-export DEPSDIR  := $(CURDIR)/$(BUILD)
+      - name: Build 3DSX and ELF
+        run: |
+          export PATH="$PWD/tools/bin:$PATH"
+          make -j$(nproc)
 
-CFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES        := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-SFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+      - name: Package CIA
+        run: |
+          export PATH="$PWD/tools/bin:$PATH"
+          python3 -c "import wave; w=wave.open('build/silence.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b'\x00\x00'*4410); w.close()"
+          bannertool makebanner -i resources/banner.png -a build/silence.wav -o build/banner.bnr
+          bannertool makesmdh -s "Llama3DS" -l "Local AI Chat (llama2.c)" -p "Eko" -i resources/icon.png -o build/icon.icn
+          makerom -f cia -o Llama3DS.cia -elf Llama3DS.elf -rsf meta/app.rsf -banner build/banner.bnr -icon build/icon.icn
 
-export LD       := $(CXX)
-export OFILES_BIN :=
-export OFILES_SRC := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
-export OFILES     := $(OFILES_BIN) $(OFILES_SRC)
-export HFILES_BIN :=
+      - name: Generate QR code for direct CIA install
+        run: |
+          CIA_URL="https://github.com/${{ github.repository }}/releases/download/latest/Llama3DS.cia"
+          python3 -c "import qrcode; img = qrcode.make('${CIA_URL}'); img.save('Llama3DS_QR.png')"
 
-export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                   -I$(CURDIR)/$(BUILD)
+      - name: Publish GitHub Release with CIA, 3DSX, and QR code
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: |
+            Scan `Llama3DS_QR.png` with **3dsDL** or **FBI** to install `Llama3DS.cia` over Wi-Fi.
+          files: |
+            Llama3DS.cia
+            Llama3DS.3dsx
+            Llama3DS_QR.png
 
-export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
-
-export _3DSXDEPS := $(OUTPUT).smdh
-
-.PHONY: $(BUILD) clean all
-
-all: $(BUILD)
-
-$(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
-
-clean:
-	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).elf $(TARGET).smdh $(TARGET).cia
-
-else
-
-CFLAGS   += $(INCLUDE)
-CXXFLAGS += $(INCLUDE)
-
-DEPENDS := $(OFILES:.o=.d)
-
-$(OUTPUT).3dsx : $(OUTPUT).elf $(_3DSXDEPS)
-$(OUTPUT).elf  : $(OFILES)
-
--include $(DEPENDS)
-
-endif
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Llama3DS-Build
+          path: |
+            Llama3DS.3dsx
+            Llama3DS.cia
+            Llama3DS_QR.png
