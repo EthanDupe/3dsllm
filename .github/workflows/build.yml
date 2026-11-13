@@ -22,6 +22,35 @@ jobs:
         run: |
           apt-get update && apt-get install -y cmake g++ git python3-qrcode python3-pil
 
+      - name: Ensure resources/icon.png, resources/banner.png, and silence.wav exist
+        run: |
+          mkdir -p resources build
+          python3 - << 'EOF'
+          import os, wave
+          from PIL import Image, ImageDraw
+
+          if not os.path.exists("resources/icon.png"):
+              icon = Image.new("RGBA", (48, 48), (15, 28, 46, 255))
+              d = ImageDraw.Draw(icon)
+              d.rounded_rectangle([2, 2, 45, 45], radius=10, fill=(22, 145, 219, 255), outline=(110, 215, 255, 255), width=2)
+              d.rounded_rectangle([11, 13, 36, 33], radius=6, fill=(255, 255, 255, 255))
+              icon.save("resources/icon.png")
+
+          if not os.path.exists("resources/banner.png"):
+              banner = Image.new("RGBA", (256, 128), (16, 30, 50, 255))
+              bd = ImageDraw.Draw(banner)
+              bd.rounded_rectangle([18, 20, 238, 108], radius=16, fill=(245, 248, 252, 255), outline=(80, 195, 255, 255), width=3)
+              bd.text((80, 56), "Llama3DS - Local AI", fill=(18, 36, 58, 255))
+              banner.save("resources/banner.png")
+
+          w = wave.open("build/silence.wav", "wb")
+          w.setnchannels(1)
+          w.setsampwidth(2)
+          w.setframerate(22050)
+          w.writeframes(b"\x00\x00" * 4410)
+          w.close()
+          EOF
+
       - name: Install makerom and build bannertool in local tools/bin
         run: |
           mkdir -p tools/bin
@@ -42,10 +71,33 @@ jobs:
       - name: Package CIA
         run: |
           export PATH="$PWD/tools/bin:$PATH"
-          python3 -c "import wave; w=wave.open('build/silence.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b'\x00\x00'*4410); w.close()"
-          bannertool makebanner -i resources/banner.png -a build/silence.wav -o build/banner.bnr
-          bannertool makesmdh -s "Llama3DS" -l "Local AI Chat (llama2.c)" -p "Eko" -i resources/icon.png -o build/icon.icn
-          makerom -f cia -o Llama3DS.cia -elf Llama3DS.elf -rsf meta/app.rsf -banner build/banner.bnr -icon build/icon.icn
+          cat << 'EOF' > build/cia.rsf
+          BasicInfo:
+            Title                   : Llama3DS
+            CompanyCode             : 00
+            ProductCode             : CTR-P-LLMA
+            ContentType             : Application
+            Logo                    : Nintendo
+
+          TitleInfo:
+            UniqueId                : 0xF41A2
+            Category                : Application
+
+          Option:
+            UseOnSD                 : true
+            EnableCompress          : true
+            FreeProductCode         : true
+            EnableCrypt             : false
+            MediaFootPadding        : false
+
+          SystemControlInfo:
+            SaveDataSize            : 0KB
+            RemasterVersion         : 0
+            StackSize               : 0x40000
+          EOF
+          bannertool makebanner -i "$PWD/resources/banner.png" -a "$PWD/build/silence.wav" -o "$PWD/build/banner.bnr"
+          bannertool makesmdh -s "Llama3DS" -l "Local AI Chat (llama2.c)" -p "Eko" -i "$PWD/resources/icon.png" -o "$PWD/build/icon.icn"
+          makerom -f cia -target t -exefslogo -desc app:4 -o Llama3DS.cia -elf Llama3DS.elf -rsf build/cia.rsf -banner "$PWD/build/banner.bnr" -icon "$PWD/build/icon.icn"
 
       - name: Generate QR code for direct CIA install
         run: |
