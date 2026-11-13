@@ -18,21 +18,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure 3DS libraries and QR tools are installed
+      - name: Ensure 3DS libraries and build tools are installed
         run: |
           dkp-pacman -Sy --noconfirm 3ds-dev || true
-          apt-get update && apt-get install -y python3-qrcode python3-pil
+          apt-get update && apt-get install -y cmake g++ git python3-qrcode python3-pil
 
-      - name: Install makerom and bannertool to local tools/bin
+      - name: Install makerom and build bannertool in local tools/bin
         run: |
           mkdir -p tools/bin
           curl -sL -o makerom.zip "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip"
           unzip -o makerom.zip -d tools/bin
-          curl -sL -o bannertool.zip "https://github.com/Steveice10/bannertool/releases/download/1.2.0/bannertool.zip"
-          unzip -o bannertool.zip -d bannertool_tmp
-          cp bannertool_tmp/linux-x86_64/bannertool tools/bin/bannertool
+          git clone --depth=1 https://github.com/carstene1ns/3ds-bannertool.git bannertool_src
+          cmake -S bannertool_src -B bannertool_src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build bannertool_src/build -j$(nproc)
+          cp bannertool_src/build/bannertool tools/bin/bannertool
           chmod +x tools/bin/makerom tools/bin/bannertool
-          rm -rf makerom.zip bannertool.zip bannertool_tmp
+          rm -rf makerom.zip bannertool_src
 
       - name: Build 3DSX and ELF
         run: |
